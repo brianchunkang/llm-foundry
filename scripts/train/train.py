@@ -9,6 +9,10 @@ import warnings
 from composer import Trainer
 from composer.core import Evaluator
 from composer.utils import dist, get_device, reproducibility
+# XLA and PJRT libraries
+import torch_xla.distributed.xla_multiprocessing as xmp
+import torch_xla.experimental.pjrt_backend
+import torch_xla.experimental.pjrt as pjrt
 from omegaconf import DictConfig
 from omegaconf import OmegaConf as om
 from transformers import PreTrainedTokenizer
@@ -136,7 +140,7 @@ def build_dataloader(cfg, tokenizer, device_batch_size):
         raise ValueError(f'Not sure how to build dataloader with config: {cfg}')
 
 
-def main(cfg):
+def main(index, cfg):
     # Check for incompatibilities between the model and data loaders
     validate_config(cfg)
 
@@ -176,7 +180,7 @@ def main(cfg):
     # Also 'meta' is only valid when using FSDP
     init_context = contextlib.nullcontext()
     if 'init_device' in cfg.model:
-        assert cfg.model.init_device in ['meta', 'cpu', 'mixed']
+        assert cfg.model.init_device in ['meta', 'cpu', 'mixed', 'xla']
         if fsdp_config is None and cfg.model.init_device == 'meta':
             warnings.warn(
                 "Using `cfg.model.init_device='meta'` is only valid when using FSDP! " +\
@@ -215,6 +219,9 @@ def main(cfg):
             model = build_composer_model(cfg.model, tokenizer)
     cfg.n_params = sum(p.numel() for p in model.parameters())
     print(f'{cfg.n_params=:.2e}')
+    
+    # broadcast parameters to all other replicas. May not be needed for tpuv4
+    pjrt.broadcast_master_param(model)
 
     # Dataloaders
     print('Building train loader...')
@@ -278,7 +285,7 @@ def main(cfg):
         eval_subset_num_batches=cfg.get('eval_subset_num_batches', -1),
         progress_bar=cfg.get('progress_bar', False),
         log_to_console=cfg.get('log_to_console', True),
-        console_log_interval=cfg.get('console_log_interval', '1ba'),
+        console_log_interval=cfg.get('console_log_interval', '10ba'),
         loggers=loggers,
         callbacks=callbacks,
         precision=cfg.precision,
@@ -302,6 +309,7 @@ def main(cfg):
         autoresume=cfg.get('autoresume', False),
         python_log_level=cfg.get('python_log_level', 'debug'),
         dist_timeout=cfg.dist_timeout,
+        device='tpu' # TODO: Need to make this conditional
     )
 
     print('Logging config...')
@@ -323,4 +331,4 @@ if __name__ == '__main__':
         yaml_cfg = om.load(f)
     cli_cfg = om.from_cli(args_list)
     cfg = om.merge(yaml_cfg, cli_cfg)
-    main(cfg)
+    xmp.spawn(main, args=(cfg,))
