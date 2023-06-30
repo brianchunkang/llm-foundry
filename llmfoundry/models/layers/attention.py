@@ -15,6 +15,8 @@ from torch import nn
 
 from llmfoundry.models.layers.norm import LPLayerNorm
 
+import torch_xla.experimental.pjrt_backend
+import torch_xla.experimental.pjrt as pjrt
 
 def _reset_is_causal(num_query_tokens: int, num_key_tokens: int,
                      original_is_causal: bool):
@@ -101,7 +103,10 @@ def scaled_multihead_dot_product_attention(
 
     if is_causal and (not q.size(2) == 1):
         s = max(s_q, s_k)
-        causal_mask = attn_weight.new_ones(s, s, dtype=torch.float16)
+        if pjrt.using_pjrt():
+            causal_mask = attn_weight.new_ones(s, s, dtype=torch.float32)
+        else:
+            causal_mask = attn_weight.new_ones(s, s, dtype=torch.float16)
         causal_mask = causal_mask.tril()
         causal_mask = causal_mask.to(torch.bool)
         causal_mask = ~causal_mask
@@ -125,7 +130,7 @@ def scaled_multihead_dot_product_attention(
     return out, None, past_key_value
 
 
-def check_valid_inputs(*tensors, valid_dtypes=[torch.float16, torch.bfloat16]):
+def check_valid_inputs(*tensors, valid_dtypes=[torch.float16, torch.bfloat16, torch.float32]):
     for tensor in tensors:
         if tensor.dtype not in valid_dtypes:
             raise TypeError(f'{tensor.dtype=} must be in {valid_dtypes=}.')
