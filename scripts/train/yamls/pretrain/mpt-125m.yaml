@@ -38,7 +38,7 @@ train_loader:
     max_seq_len: ${max_seq_len}
     shuffle_seed: ${global_seed}
   drop_last: true
-  num_workers: 8
+  num_workers: 4
 
 eval_loader:
   name: text
@@ -50,7 +50,7 @@ eval_loader:
     max_seq_len: ${max_seq_len}
     shuffle_seed: ${global_seed}
   drop_last: false
-  num_workers: 8
+  num_workers: 4
 
 # Optimization
 scheduler:
@@ -76,12 +76,12 @@ max_duration: 4800ba # ~ 2.5B tokens
 eval_interval: 500ba
 eval_first: false
 eval_subset_num_batches: 1 #-1
-global_train_batch_size: 4
+global_train_batch_size: 16
 
 # System
 seed: ${global_seed}
 device_eval_batch_size: 4
-device_train_microbatch_size: 1
+device_train_microbatch_size: 4
 # device_train_microbatch_size: auto
 precision: fp32
 
