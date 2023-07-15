@@ -1,5 +1,5 @@
-data_local: 
-data_remote: ./my-copy-c4 # If blank, files must be present in data_local
+data_local: #/home/briankang_google_com/ram # planning to mount 240GB of the instance memory for this. Limiting cache on disk is slow.
+data_remote: /home/briankang_google_com/my-copy-c4 # If blank, files must be present in data_local
 max_seq_len: 2048
 global_seed: 17
 
@@ -37,6 +37,7 @@ train_loader:
     shuffle: true
     max_seq_len: ${max_seq_len}
     shuffle_seed: ${global_seed}
+    cache_limit: 100gb
   drop_last: true
   num_workers: 4
 
@@ -49,6 +50,7 @@ eval_loader:
     shuffle: false
     max_seq_len: ${max_seq_len}
     shuffle_seed: ${global_seed}
+    cache_limit: 10gb
   drop_last: false
   num_workers: 4
 
@@ -72,16 +74,16 @@ algorithms:
     clipping_type: norm
     clipping_threshold: 1.0
 
-max_duration: 4800ba # ~ 2.5B tokens
-eval_interval: 500ba
+max_duration: 10ba # Original run is ~ 2.5B tokens. With batch size 16, will need 76800 batches
+eval_interval: 10ba
 eval_first: false
 eval_subset_num_batches: 1 #-1
-global_train_batch_size: 16
+global_train_batch_size: 8
 
 # System
 seed: ${global_seed}
-device_eval_batch_size: 4
-device_train_microbatch_size: 4
+device_eval_batch_size: 2
+device_train_microbatch_size: 2
 # device_train_microbatch_size: auto
 precision: fp32
 
