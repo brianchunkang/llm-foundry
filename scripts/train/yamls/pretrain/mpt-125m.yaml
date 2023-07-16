@@ -37,7 +37,7 @@ train_loader:
     shuffle: true
     max_seq_len: ${max_seq_len}
     shuffle_seed: ${global_seed}
-    cache_limit: 100gb
+    cache_limit: 60gb
   drop_last: true
   num_workers: 4
 
@@ -50,7 +50,8 @@ eval_loader:
     shuffle: false
     max_seq_len: ${max_seq_len}
     shuffle_seed: ${global_seed}
-    cache_limit: 10gb
+    cache_limit: 60gb
+    predownload: 4096
   drop_last: false
   num_workers: 4
 
@@ -74,16 +75,16 @@ algorithms:
     clipping_type: norm
     clipping_threshold: 1.0
 
-max_duration: 10ba # Original run is ~ 2.5B tokens. With batch size 16, will need 76800 batches
-eval_interval: 10ba
+max_duration: 200ba # Original run is ~ 2.5B tokens. With batch size 16, will need 76800 batches
+eval_interval: 25ba
 eval_first: false
 eval_subset_num_batches: 1 #-1
-global_train_batch_size: 8
+global_train_batch_size: 16
 
 # System
 seed: ${global_seed}
-device_eval_batch_size: 2
-device_train_microbatch_size: 2
+device_eval_batch_size: 4
+device_train_microbatch_size: 4
 # device_train_microbatch_size: auto
 precision: fp32
 
