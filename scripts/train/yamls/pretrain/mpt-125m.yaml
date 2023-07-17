@@ -34,10 +34,11 @@ train_loader:
     local: ${data_local}
     remote: ${data_remote}
     split: train
-    shuffle: true
+    shuffle: false
     max_seq_len: ${max_seq_len}
     shuffle_seed: ${global_seed}
     cache_limit: 60gb
+    predownload: 4096
   drop_last: true
   num_workers: 4
 
@@ -50,8 +51,7 @@ eval_loader:
     shuffle: false
     max_seq_len: ${max_seq_len}
     shuffle_seed: ${global_seed}
-    cache_limit: 60gb
-    predownload: 4096
+    cache_limit: 15gb
   drop_last: false
   num_workers: 4
 
