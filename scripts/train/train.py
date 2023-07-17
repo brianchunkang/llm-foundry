@@ -17,6 +17,14 @@ from omegaconf import DictConfig
 from omegaconf import OmegaConf as om
 from transformers import PreTrainedTokenizer
 
+# FSDP XLA libraries
+from functools import partial
+from torch_xla.distributed.fsdp import XlaFullyShardedDataParallel as FSDP, checkpoint_module
+from torch_xla.distributed.fsdp.wrap import (size_based_auto_wrap_policy,
+                                             transformer_auto_wrap_policy)
+from llmfoundry.models.layers import (attention, blocks)
+import torch
+
 from llmfoundry import (COMPOSER_MODEL_REGISTRY, ComposerHFCausalLM,
                         MPTForCausalLM, build_finetuning_dataloader,
                         build_text_denoising_dataloader)
@@ -143,6 +151,26 @@ def build_dataloader(cfg, tokenizer, device_batch_size):
 def main(index, cfg):
     # Check for incompatibilities between the model and data loaders
     validate_config(cfg)
+    
+    if pjrt.using_pjrt():
+        # FSDP XLA policy
+        auto_wrap_policy = partial(
+                transformer_auto_wrap_policy,
+                transformer_layer_cls={
+                    blocks.MPTBlock #,
+                    #blocks.MPTMLP,
+                    #attention.MultiheadAttention
+                    }
+                )
+
+        fsdp_wrap = lambda m: FSDP(
+        m,
+        compute_dtype=torch.bfloat16,
+        shard_param_on_dim_0=True,
+        pin_layout_in_collective_ops=True,
+        auto_wrap_policy=auto_wrap_policy
+        #,auto_wrapper_callable=auto_wrapper_callable
+        )
 
     # Filter deprecation warning from torch internal usage
     warnings.filterwarnings(
@@ -219,6 +247,10 @@ def main(index, cfg):
             model = build_composer_model(cfg.model, tokenizer)
     cfg.n_params = sum(p.numel() for p in model.parameters())
     print(f'{cfg.n_params=:.2e}')
+    
+    # Wrap model in FSDP
+    if pjrt.using_pjrt():
+        model = fsdp_wrap(model) # FSDP(model) works
     
     # broadcast parameters to all other replicas. May not be needed for tpuv4
     pjrt.broadcast_master_param(model)
