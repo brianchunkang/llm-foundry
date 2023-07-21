@@ -162,14 +162,16 @@ def main(index, cfg):
                     #attention.MultiheadAttention
                     }
                 )
+        #auto_wrapper_callable = lambda m, *args, **kwargs: FSDP(
+        #          checkpoint_module(m), *args, **kwargs)
 
         fsdp_wrap = lambda m: FSDP(
         m,
         compute_dtype=torch.bfloat16,
         shard_param_on_dim_0=True,
         pin_layout_in_collective_ops=True,
-        auto_wrap_policy=auto_wrap_policy
-        #,auto_wrapper_callable=auto_wrapper_callable
+        auto_wrap_policy=auto_wrap_policy #,
+        #auto_wrapper_callable=auto_wrapper_callable
         )
 
     # Filter deprecation warning from torch internal usage

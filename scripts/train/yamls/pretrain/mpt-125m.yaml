@@ -79,12 +79,12 @@ max_duration: 20ba # Original run is ~ 2.5B tokens. With batch size 16, will nee
 eval_interval: 5ba
 eval_first: false
 eval_subset_num_batches: 1 #-1
-global_train_batch_size: 56
+global_train_batch_size: 128
 
 # System
 seed: ${global_seed}
-device_eval_batch_size: 14
-device_train_microbatch_size: 14
+device_eval_batch_size: 4
+device_train_microbatch_size: 16
 # device_train_microbatch_size: auto
 precision: fp32
 
