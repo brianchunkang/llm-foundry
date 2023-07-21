@@ -343,7 +343,9 @@ def main(index, cfg):
         autoresume=cfg.get('autoresume', False),
         python_log_level=cfg.get('python_log_level', 'debug'),
         dist_timeout=cfg.dist_timeout,
+        index=index, #Add to print debug on single device
         device='tpu' # TODO: Need to make this conditional
+        
     )
 
     print('Logging config...')
