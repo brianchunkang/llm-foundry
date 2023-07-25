@@ -37,8 +37,8 @@ train_loader:
     shuffle: false
     max_seq_len: ${max_seq_len}
     shuffle_seed: ${global_seed}
-    cache_limit: 360gb
-    predownload: 55296
+    cache_limit: 200gb
+    predownload: 110592
   drop_last: true
   num_workers: 4
 
@@ -58,7 +58,7 @@ eval_loader:
 # Optimization
 scheduler:
   name: cosine_with_warmup
-  t_warmup: 0ba
+  t_warmup: 1ba
   alpha_f: 0.1
 
 optimizer:
@@ -79,12 +79,12 @@ max_duration: 20ba # Original run is ~ 2.5B tokens. With batch size 16, will nee
 eval_interval: 5ba
 eval_first: false
 eval_subset_num_batches: 1 #-1
-global_train_batch_size: 128
+global_train_batch_size: 2048
 
 # System
 seed: ${global_seed}
-device_eval_batch_size: 4
-device_train_microbatch_size: 16
+device_eval_batch_size: 8
+device_train_microbatch_size: 32
 # device_train_microbatch_size: auto
 precision: fp32
 

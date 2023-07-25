@@ -162,16 +162,16 @@ def main(index, cfg):
                     #attention.MultiheadAttention
                     }
                 )
-        #auto_wrapper_callable = lambda m, *args, **kwargs: FSDP(
-        #          checkpoint_module(m), *args, **kwargs)
+        auto_wrapper_callable = lambda m, *args, **kwargs: FSDP(
+                  checkpoint_module(m), *args, **kwargs)
 
         fsdp_wrap = lambda m: FSDP(
         m,
         compute_dtype=torch.bfloat16,
         shard_param_on_dim_0=True,
         pin_layout_in_collective_ops=True,
-        auto_wrap_policy=auto_wrap_policy #,
-        #auto_wrapper_callable=auto_wrapper_callable
+        auto_wrap_policy=auto_wrap_policy,
+        auto_wrapper_callable=auto_wrapper_callable
         )
 
     # Filter deprecation warning from torch internal usage
@@ -255,7 +255,8 @@ def main(index, cfg):
         model = fsdp_wrap(model) # FSDP(model) works
     
     # broadcast parameters to all other replicas. May not be needed for tpuv4
-    pjrt.broadcast_master_param(model)
+    if pjrt.using_pjrt():
+        pjrt.broadcast_master_param(model)
 
     # Dataloaders
     print('Building train loader...')
@@ -303,7 +304,7 @@ def main(index, cfg):
         build_algorithm(name, algorithm_cfg)
         for name, algorithm_cfg in (cfg.get('algorithms') or {}).items()
     ]
-
+    
     # Build the Trainer
     print('Building trainer...')
     trainer = Trainer(
@@ -345,7 +346,6 @@ def main(index, cfg):
         dist_timeout=cfg.dist_timeout,
         index=index, #Add to print debug on single device
         device='tpu' # TODO: Need to make this conditional
-        
     )
 
     print('Logging config...')
@@ -367,4 +367,4 @@ if __name__ == '__main__':
         yaml_cfg = om.load(f)
     cli_cfg = om.from_cli(args_list)
     cfg = om.merge(yaml_cfg, cli_cfg)
-    xmp.spawn(main, args=(cfg,))
+    xmp.spawn(main, args=(cfg,), nprocs=cfg.nprocs)
