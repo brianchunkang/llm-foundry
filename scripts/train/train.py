@@ -356,6 +356,9 @@ def main(index, cfg):
         trainer.eval()
 
     print('Starting training...')
+    import torch_xla.debug.profiler as xp
+    server = xp.start_server(9012)
+    
     trainer.fit()
 
     print('Done.')

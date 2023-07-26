@@ -38,7 +38,7 @@ train_loader:
     max_seq_len: ${max_seq_len}
     shuffle_seed: ${global_seed}
     cache_limit: 200gb
-    predownload: 110592
+    predownload: 221184
   drop_last: true
   num_workers: 4
 
