@@ -613,7 +613,7 @@ def build_attn_bias(
 
 def gen_slopes(n_heads, alibi_bias_max=8, device=None):
     _n_heads = 2**math.ceil(math.log2(n_heads))
-    m = torch.arange(1, _n_heads + 1, dtype=torch.float32, device=device)
+    m = torch.arange(1, _n_heads + 1, dtype=torch.bfloat16,device=device) #torch.float32, device=device)
     m = m.mul(alibi_bias_max / _n_heads)
     slopes = (1. / torch.pow(2, m))
 
