@@ -17,6 +17,7 @@ from llmfoundry.models.layers.norm import LPLayerNorm
 
 import torch_xla.experimental.pjrt_backend
 import torch_xla.experimental.pjrt as pjrt
+from xformers.components.attention import ScaledDotProduct
 
 def _reset_is_causal(num_query_tokens: int, num_key_tokens: int,
                      original_is_causal: bool):
@@ -390,13 +391,16 @@ class MultiheadAttention(nn.Module):
                     'using `attn_impl: flash` if your model does not use `alibi` or `prefix_lm`.'
                 )
         elif self.attn_impl == 'torch':
-            self.attn_fn = scaled_multihead_dot_product_attention
-            if torch.cuda.is_available() and verbose:
-                warnings.warn(
-                    'Using `attn_impl: torch`. If your model does not use `alibi` or ' +\
-                    '`prefix_lm` we recommend using `attn_impl: flash` otherwise ' +\
-                    'we recommend using `attn_impl: triton`.'
-                )
+            if pjrt.using_pjrt():
+              self.attn_fn = ScaledDotProduct()
+            else:
+              self.attn_fn = scaled_multihead_dot_product_attention
+              if torch.cuda.is_available() and verbose:
+                  warnings.warn(
+                      'Using `attn_impl: torch`. If your model does not use `alibi` or ' +\
+                      '`prefix_lm` we recommend using `attn_impl: flash` otherwise ' +\
+                      'we recommend using `attn_impl: triton`.'
+                  )
         else:
             raise ValueError(f'{attn_impl=} is an invalid setting.')
 
@@ -427,20 +431,30 @@ class MultiheadAttention(nn.Module):
             query = self.q_ln(query).to(dtype)
             key = self.k_ln(key).to(dtype)
 
-        context, attn_weights, past_key_value = self.attn_fn(
-            query,
-            key,
-            value,
-            self.n_heads,
-            past_key_value=past_key_value,
-            softmax_scale=self.softmax_scale,
-            attn_bias=attn_bias,
-            key_padding_mask=key_padding_mask,
-            is_causal=is_causal,
-            dropout_p=self.attn_dropout_p,
-            training=self.training,
-            needs_weights=needs_weights,
-        )
+        if pjrt.using_pjrt():
+            attn_weights = None
+            past_key_value = None
+            context = self.attn_fn (
+              q=query, k=key, 
+              v=query, 
+              mask=key_padding_mask,
+              att_mask=attention_mask,
+            )
+        else:
+            context, attn_weights, past_key_value = self.attn_fn(
+                query,
+                key,
+                value,
+                self.n_heads,
+                past_key_value=past_key_value,
+                softmax_scale=self.softmax_scale,
+                attn_bias=attn_bias,
+                key_padding_mask=key_padding_mask,
+                is_causal=is_causal,
+                dropout_p=self.attn_dropout_p,
+                training=self.training,
+                needs_weights=needs_weights,
+            )
 
         return self.out_proj(context), attn_weights, past_key_value
 
@@ -509,13 +523,16 @@ class MultiQueryAttention(nn.Module):
                     'using `attn_impl: flash` if your model does not use `alibi` or `prefix_lm`.'
                 )
         elif self.attn_impl == 'torch':
-            self.attn_fn = scaled_multihead_dot_product_attention
-            if torch.cuda.is_available() and verbose:
-                warnings.warn(
-                    'Using `attn_impl: torch`. If your model does not use `alibi` or ' +\
-                    '`prefix_lm` we recommend using `attn_impl: flash` otherwise ' +\
-                    'we recommend using `attn_impl: triton`.'
-                )
+            if pjrt.using_pjrt():
+              self.attn_fn = ScaledDotProduct()
+            else:
+              self.attn_fn = scaled_multihead_dot_product_attention
+              if torch.cuda.is_available() and verbose:
+                  warnings.warn(
+                      'Using `attn_impl: torch`. If your model does not use `alibi` or ' +\
+                      '`prefix_lm` we recommend using `attn_impl: flash` otherwise ' +\
+                      'we recommend using `attn_impl: triton`.'
+                  )
         else:
             raise ValueError(f'{attn_impl=} is an invalid setting.')
 
@@ -547,7 +564,17 @@ class MultiQueryAttention(nn.Module):
             query = self.q_ln(query).to(dtype)
             key = self.k_ln(key).to(dtype)
 
-        context, attn_weights, past_key_value = self.attn_fn(
+        if pjrt.using_pjrt():
+            attn_weights = None
+            past_key_value = None
+            context = self.attn_fn (
+              q=query, k=key, 
+              v=query, 
+              mask=key_padding_mask,
+              att_mask=attention_mask,
+            )
+        else:
+            context, attn_weights, past_key_value = self.attn_fn(
             query,
             key,
             value,
@@ -561,7 +588,7 @@ class MultiQueryAttention(nn.Module):
             training=self.training,
             needs_weights=needs_weights,
             multiquery=True,
-        )
+            )
 
         return self.out_proj(context), attn_weights, past_key_value
 
