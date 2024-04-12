@@ -1,5 +1,5 @@
-data_local: ./my-copy-c4
-data_remote:  # If blank, files must be present in data_local
+data_local: # ./my-copy-c4
+data_remote: /home/briankang/my-copy-c4 # If blank, files must be present in data_local
 max_seq_len: 2048
 global_seed: 17
 
@@ -9,7 +9,7 @@ run_name:  # If left blank, will be read from env var $RUN_NAME
 # Model
 model:
   name: mpt_causal_lm
-  init_device: meta
+  init_device: xla #meta
   d_model: 768
   n_heads: 12
   n_layers: 12
@@ -17,7 +17,9 @@ model:
   max_seq_len: ${max_seq_len}
   vocab_size: 50368
   attn_config:
-    attn_impl: flash
+    attn_impl: torch #flash
+  loss_fn: torch_crossentropy
+  low_precision_layernorm: false
 
 # Tokenizer
 tokenizer:
@@ -32,11 +34,13 @@ train_loader:
     local: ${data_local}
     remote: ${data_remote}
     split: train
-    shuffle: true
+    shuffle: false #true
     max_seq_len: ${max_seq_len}
     shuffle_seed: ${global_seed}
+    cache_limit: 200gb
+    predownload: 221184
   drop_last: true
-  num_workers: 8
+  num_workers: 4 #8
 
 eval_loader:
   name: text
@@ -47,22 +51,23 @@ eval_loader:
     shuffle: false
     max_seq_len: ${max_seq_len}
     shuffle_seed: ${global_seed}
+    cache_limit: 60gb
   drop_last: false
-  num_workers: 8
+  num_workers: 4 #8
 
 # Optimization
 scheduler:
   name: cosine_with_warmup
-  t_warmup: 100ba
+  t_warmup: 1ba #100ba
   alpha_f: 0.1
 
 optimizer:
-  name: decoupled_adamw
+  name: decoupled_lionw #decoupled_adamw
   lr: 6.0e-4
   betas:
   - 0.9
   - 0.95
-  eps: 1.0e-08
+  #eps: 1.0e-08
   weight_decay: 0.0
 
 algorithms:
@@ -70,27 +75,27 @@ algorithms:
     clipping_type: norm
     clipping_threshold: 1.0
 
-max_duration: 4800ba  # ~ 2.5B tokens
-eval_interval: 500ba
+max_duration: 20ba # 4800ba  # ~ 2.5B tokens
+eval_interval: 5ba # 500ba
 eval_first: false
-eval_subset_num_batches: -1
-global_train_batch_size: 256
+eval_subset_num_batches: 1 #-1
+global_train_batch_size: 2048 #256
 
 # System
 seed: ${global_seed}
-device_eval_batch_size: 16
-device_train_microbatch_size: 16
+device_eval_batch_size: 64 #16
+device_train_microbatch_size: 64 #16
 # device_train_microbatch_size: auto
-precision: amp_bf16
+precision: bf16 # amp_bf16
 
 # FSDP
-fsdp_config:
-  sharding_strategy: FULL_SHARD
-  mixed_precision: PURE
-  activation_checkpointing: false
-  activation_checkpointing_reentrant: false
-  activation_cpu_offload: false
-  limit_all_gathers: true
+# fsdp_config:
+#  sharding_strategy: FULL_SHARD
+#  mixed_precision: PURE
+#  activation_checkpointing: false
+#  activation_checkpointing_reentrant: false
+#  activation_cpu_offload: false
+#  limit_all_gathers: true
 
 # Logging
 progress_bar: false

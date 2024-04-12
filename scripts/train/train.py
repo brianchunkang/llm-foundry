@@ -10,6 +10,15 @@ import warnings
 from typing import Any, Dict, List, Optional, Union
 
 import torch
+
+import torch_xla.debug.profiler as xp
+import torch_xla.distributed.xla_multiprocessing as xmp
+from functools import partial
+from torch_xla.distributed.fsdp import XlaFullyShardedDataParallel as FSDP, checkpoint_module
+from torch_xla.distributed.fsdp.wrap import (size_based_auto_wrap_policy,
+                                             transformer_auto_wrap_policy)
+import torch_xla.runtime as rt
+
 from composer import Trainer
 from composer.core.callback import Callback
 from composer.metrics.nlp import InContextLearningMetric
@@ -131,6 +140,9 @@ def main(cfg: DictConfig) -> Trainer:
         message=
         'torch.distributed.*_base is a private function and will be deprecated.*'
     )
+    
+    if index == 0 and rt.using_pjrt():
+        server = xp.start_server(9012)
 
     # Check for incompatibilities between the model and data loaders
     validate_config(cfg)
@@ -533,6 +545,24 @@ def main(cfg: DictConfig) -> Trainer:
         init_context=init_context,
         master_weights_dtype=model_config.get('master_weights_dtype', None),
     )
+    
+    # Use fsdp_wrap for training on TPUs
+    if rt.using_pjrt():
+        # FSDP XLA policy
+        auto_wrap_policy = partial(
+            transformer_auto_wrap_policy,
+            transformer_layer_cls={blocks.MPTBlock})
+        auto_wrapper_callable = lambda m, *args, **kwargs: FSDP(
+            checkpoint_module(m), *args, **kwargs)
+        fsdp_wrap = lambda m: FSDP(
+            m,
+            compute_dtype=torch.bfloat16,
+            shard_param_on_dim_0=True,
+            pin_layout_in_collective_ops=False,
+            auto_wrap_policy=auto_wrap_policy,
+            auto_wrapper_callable=auto_wrapper_callable
+        )
+        model = fsdp_wrap(model)
 
     # Log number of parameters
     if hasattr(model, 'n_total_params'):
@@ -626,7 +656,7 @@ def main(cfg: DictConfig) -> Trainer:
     trainer.fit()
 
     log.info('Done.')
-    return trainer
+    #return trainer
 
 
 if __name__ == '__main__':
@@ -642,4 +672,7 @@ if __name__ == '__main__':
     cfg = om.merge(yaml_cfg, cli_cfg)
     om.resolve(cfg)
     assert isinstance(cfg, DictConfig)
-    main(cfg)
+    if rt.using_pjrt():
+        xmp.spawn(main, args=(cfg,), nprocs=None) 
+    else:
+        main(cfg)
