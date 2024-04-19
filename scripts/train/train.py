@@ -11,13 +11,18 @@ from typing import Any, Dict, List, Optional, Union
 
 import torch
 
+import torch_xla.runtime as rt
+import torch_xla.distributed.parallel_loader as pl
+
 import torch_xla.debug.profiler as xp
+import torch_xla.core.xla_model as xm
 import torch_xla.distributed.xla_multiprocessing as xmp
+# FSDP XLA libraries
 from functools import partial
 from torch_xla.distributed.fsdp import XlaFullyShardedDataParallel as FSDP, checkpoint_module
 from torch_xla.distributed.fsdp.wrap import (size_based_auto_wrap_policy,
                                              transformer_auto_wrap_policy)
-import torch_xla.runtime as rt
+from llmfoundry.models.layers import (attention, blocks)
 
 from composer import Trainer
 from composer.core.callback import Callback
@@ -44,6 +49,8 @@ from llmfoundry.utils.config_utils import (log_config, pop_config,
                                            process_init_device,
                                            update_batch_size_info)
 from llmfoundry.utils.registry_utils import import_file
+# Adding blocks for FSDP wrap for TPU
+from llmfoundry.models.layers import (blocks)
 
 log = logging.getLogger(__name__)
 
@@ -122,7 +129,7 @@ def validate_config(cfg: DictConfig):
             )
 
 
-def main(cfg: DictConfig) -> Trainer:
+def main(index, cfg: DictConfig) -> Trainer:
     # Run user provided code if specified
     code_paths = pop_config(cfg,
                             'code_paths',
@@ -504,6 +511,10 @@ def main(cfg: DictConfig) -> Trainer:
             mosaicml_logger.log_exception(e)
         raise e
 
+    #if rt.using_pjrt():
+    #    device = xm.xla_device()
+    #    train_loader = pl.MpDeviceLoader(train_loader, device)
+
     if mosaicml_logger is not None:
         mosaicml_logger.log_metrics({'data_validated': time.time()})
 
@@ -531,6 +542,9 @@ def main(cfg: DictConfig) -> Trainer:
         if eval_gauntlet_callback is not None:
             callbacks.append(eval_gauntlet_callback)
 
+    #if rt.using_pjrt():
+    #    evaluators = pl.MpDeviceLoader(evaluators, device)
+
     if mosaicml_logger is not None:
         log_train_analytics(mosaicml_logger, model_config, train_loader_config,
                             eval_loader_config, callback_configs,
@@ -545,8 +559,9 @@ def main(cfg: DictConfig) -> Trainer:
         init_context=init_context,
         master_weights_dtype=model_config.get('master_weights_dtype', None),
     )
-    
+
     # Use fsdp_wrap for training on TPUs
+
     if rt.using_pjrt():
         # FSDP XLA policy
         auto_wrap_policy = partial(
@@ -556,13 +571,13 @@ def main(cfg: DictConfig) -> Trainer:
             checkpoint_module(m), *args, **kwargs)
         fsdp_wrap = lambda m: FSDP(
             m,
-            compute_dtype=torch.bfloat16,
+            #compute_dtype=torch.bfloat16,
             shard_param_on_dim_0=True,
             pin_layout_in_collective_ops=False,
             auto_wrap_policy=auto_wrap_policy,
             auto_wrapper_callable=auto_wrapper_callable
         )
-        model = fsdp_wrap(model)
+        #model = fsdp_wrap(model)
 
     # Log number of parameters
     if hasattr(model, 'n_total_params'):
@@ -672,7 +687,7 @@ if __name__ == '__main__':
     cfg = om.merge(yaml_cfg, cli_cfg)
     om.resolve(cfg)
     assert isinstance(cfg, DictConfig)
-    if rt.using_pjrt():
-        xmp.spawn(main, args=(cfg,), nprocs=None) 
-    else:
-        main(cfg)
+    #if rt.using_pjrt():
+    #    xmp.spawn(main, args=(cfg,), nprocs=None) 
+    #else:    main(index=0, cfg=cfg)
+

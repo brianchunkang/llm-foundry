@@ -17,6 +17,7 @@ from typing import (Any, Dict, List, Mapping, MutableMapping, Optional, Tuple,
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch_xla.runtime as rt
 from composer.models import HuggingFaceModel
 from composer.utils import dist
 
@@ -1047,7 +1048,9 @@ class ComposerMPTCausalLM(HuggingFaceModel):
         targets = self.get_targets(batch)
         losses = self.loss_fn(outputs.logits.view(-1, outputs.logits.size(-1)),
                               targets.view(-1))
-
+        if rt.using_pjrt():
+            return {'total' : self.loss_fn(outputs.logits.view(-1, outputs.logits.size(-1)), targets.view(-1))}
+            
         if torch.all(targets == self.loss_fn.ignore_index):
             loss = losses.sum()
         else:

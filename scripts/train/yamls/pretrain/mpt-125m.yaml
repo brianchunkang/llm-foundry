@@ -1,5 +1,5 @@
-data_local: # ./my-copy-c4
-data_remote: /home/briankang/my-copy-c4 # If blank, files must be present in data_local
+data_local: ./my-copy-c4
+data_remote: # If blank, files must be present in data_local
 max_seq_len: 2048
 global_seed: 17
 
@@ -33,7 +33,7 @@ train_loader:
   dataset:
     local: ${data_local}
     remote: ${data_remote}
-    split: train
+    split: train_small
     shuffle: false #true
     max_seq_len: ${max_seq_len}
     shuffle_seed: ${global_seed}
@@ -47,13 +47,13 @@ eval_loader:
   dataset:
     local: ${data_local}
     remote: ${data_remote}
-    split: val
+    split: val_small
     shuffle: false
     max_seq_len: ${max_seq_len}
     shuffle_seed: ${global_seed}
     cache_limit: 60gb
   drop_last: false
-  num_workers: 4 #8
+  num_workers: 1 #8
 
 # Optimization
 scheduler:
@@ -62,12 +62,12 @@ scheduler:
   alpha_f: 0.1
 
 optimizer:
-  name: decoupled_lionw #decoupled_adamw
+  name: decoupled_adamw
   lr: 6.0e-4
   betas:
   - 0.9
   - 0.95
-  #eps: 1.0e-08
+  eps: 1.0e-08
   weight_decay: 0.0
 
 algorithms:
@@ -86,7 +86,7 @@ seed: ${global_seed}
 device_eval_batch_size: 64 #16
 device_train_microbatch_size: 64 #16
 # device_train_microbatch_size: auto
-precision: bf16 # amp_bf16
+precision: fp32 #amp_bf16
 
 # FSDP
 # fsdp_config:
