@@ -655,6 +655,7 @@ def main(index, cfg: DictConfig) -> Trainer:
         dist_timeout=dist_timeout,
         profiler=profiler,
         compile_config=compile_config,
+        device='tpu',
     )
 
     if should_log_config:
