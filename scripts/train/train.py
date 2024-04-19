@@ -689,5 +689,6 @@ if __name__ == '__main__':
     assert isinstance(cfg, DictConfig)
     #if rt.using_pjrt():
     #    xmp.spawn(main, args=(cfg,), nprocs=None) 
-    #else:    main(index=0, cfg=cfg)
+    #else:    
+    main(index=0, cfg=cfg)
 
