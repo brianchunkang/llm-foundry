@@ -18,6 +18,11 @@ from llmfoundry.layers_registry import (attention_classes,
                                         attention_implementations)
 from llmfoundry.models.layers.layer_builders import build_fc, build_norm
 
+# xla check
+from composer.utils import is_xla_installed
+if is_xla_installed():
+    import torch_xla.runtime as xr
+    import torch_xla.distributed.spmd as xs
 
 def is_flash_v2_installed(v2_version: str = '2.0.0'):
     assert version.parse(v2_version) >= version.parse('2.0.0')
@@ -215,6 +220,12 @@ def flash_attn_fn(
     flash_attn_padding_info: Optional[dict[str, torch.Tensor]] = None,
 ) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor,
                                                                 torch.Tensor]]]:
+    if is_xla_installed():
+        attn_weight = query @ key.transpose(-2, -1)
+        attn_weight = nn.functional.softmax(attn_weight, dim=-1)
+        attn_output = attn_weight @ value
+        return attn_output, None, None
+    
     if key_padding_mask is not None:
         raise ValueError('key_padding_mask should be None for flash attn.')
     del key_padding_mask
@@ -550,6 +561,34 @@ class GroupedQueryAttention(nn.Module):
                 'alibi_slopes': alibi_slopes,
                 'flash_attn_padding_info': flash_attn_padding_info,
             }
+        
+            if is_xla_installed():
+                from torch_xla.experimental.custom_kernel import flash_attention as flash_attention_xla
+                import jax
+                
+                jax.config.update('jax_default_matmul_precision', jax.lax.Precision.HIGHEST)
+                n_devices = xr.global_runtime_device_count()
+                mesh_shape = (n_devices, 1, 1, 1) # (1, n_devices // 2, 2)
+                mesh = xs.Mesh(range(n_devices), mesh_shape, ('fsdp', 'heads', 'sequences', 'dims'))
+                attn_weights = None
+                past_key_value = None
+                # Definition of JAX flash_attenion: https://github.com/google/jax/blob/main/jax/experimental/pallas/ops/tpu/flash_attention.py
+                print (f'Query shape is {query.shape}')
+                q = rearrange(query, 'b s (h d) -> b h s d', h=self.n_heads)
+                k = rearrange(key, 'b s (h d) -> b h d s', h=self.kv_n_heads)
+                v = rearrange(value, 'b s (h d) -> b h s d', h=self.kv_n_heads)
+                print (f'Update query shape is {q.shape}')
+                context = flash_attention_xla(
+                    q=q,
+                    k=k,
+                    v=v,
+                    causal=is_causal,
+                    #partition_spec=partition_spec,
+                    mesh=mesh,
+                )
+                jax.config.update('jax_default_matmul_precision', jax.lax.Precision.DEFAULT)
+                
+                return self.out_proj(context), attn_weights, past_key_value
 
         context, attn_weights, past_key_value = self.attn_fn(
             query,

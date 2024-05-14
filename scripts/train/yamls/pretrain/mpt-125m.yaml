@@ -17,7 +17,7 @@ model:
   max_seq_len: ${max_seq_len}
   vocab_size: 50368
   attn_config:
-    attn_impl: torch #flash
+    attn_impl: flash
   loss_fn: torch_crossentropy
   low_precision_layernorm: false
 
@@ -86,7 +86,7 @@ seed: ${global_seed}
 device_eval_batch_size: 64 #16
 device_train_microbatch_size: 64 #16
 # device_train_microbatch_size: auto
-precision: fp32 #amp_bf16
+precision: amp_bf16
 
 # FSDP
 # fsdp_config:

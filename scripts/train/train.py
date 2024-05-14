@@ -37,6 +37,15 @@ from rich.traceback import install
 from llmfoundry.utils import (find_mosaicml_logger, log_train_analytics,
                               maybe_create_mosaicml_logger)
 
+# xla check
+from composer.utils import is_xla_installed
+if is_xla_installed():
+    # SPMD w/ FSDP
+    from torch_xla.experimental.spmd_fully_sharded_data_parallel import SpmdFullyShardedDataParallel as FSDPv2
+    import torch_xla.distributed.spmd as xs
+    import torch_xla.runtime as xr
+    xr.use_spmd()
+
 install()
 from llmfoundry.callbacks import AsyncEval
 from llmfoundry.data.dataloader import build_dataloader
@@ -53,7 +62,6 @@ from llmfoundry.utils.registry_utils import import_file
 from llmfoundry.models.layers import (blocks)
 
 log = logging.getLogger(__name__)
-
 
 def validate_config(cfg: DictConfig):
     """Validates compatible model and dataloader selection."""
@@ -128,6 +136,9 @@ def validate_config(cfg: DictConfig):
                 f'MoEs with expert parallelism (moe_world_size {moe_world_size} > 1) require `use_orig_params=True`.'
             )
 
+def shard_output(output, mesh):
+    if is_xla_installed():
+        xs.mark_sharding(output.logits, mesh, ('fsdp', None, None))
 
 def main(index, cfg: DictConfig) -> Trainer:
     # Run user provided code if specified
@@ -560,24 +571,13 @@ def main(index, cfg: DictConfig) -> Trainer:
         master_weights_dtype=model_config.get('master_weights_dtype', None),
     )
 
-    # Use fsdp_wrap for training on TPUs
-
-    if rt.using_pjrt():
-        # FSDP XLA policy
-        auto_wrap_policy = partial(
-            transformer_auto_wrap_policy,
-            transformer_layer_cls={blocks.MPTBlock})
-        auto_wrapper_callable = lambda m, *args, **kwargs: FSDP(
-            checkpoint_module(m), *args, **kwargs)
-        fsdp_wrap = lambda m: FSDP(
-            m,
-            #compute_dtype=torch.bfloat16,
-            shard_param_on_dim_0=True,
-            pin_layout_in_collective_ops=False,
-            auto_wrap_policy=auto_wrap_policy,
-            auto_wrapper_callable=auto_wrapper_callable
-        )
-        #model = fsdp_wrap(model)
+    # Use SPMD w/ FSDP for training on TPUs
+    if is_xla_installed():
+        # SPMD w/ FSDP
+        n_devices = xr.global_runtime_device_count()
+        mesh_shape = (n_devices, 1, 1, 1)
+        mesh = xs.Mesh(range(n_devices), mesh_shape, ('fsdp', 'heads', 'sequences', 'dims'))
+        model = FSDPv2(model, mesh, shard_output)
 
     # Log number of parameters
     if hasattr(model, 'n_total_params'):

@@ -23,6 +23,9 @@ from composer.utils import dist
 
 from llmfoundry.models.layers.attention import is_flash_v2_installed
 
+# xla check
+from composer.utils import is_xla_installed
+
 if is_flash_v2_installed():
     try:  # This try...except is needed because transformers requires it despite the 'if' statement above
         from flash_attn import bert_padding
@@ -216,6 +219,8 @@ def gen_flash_attn_padding_info(
         attention_mask_in_length: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None):
     flash_attn_padding_info = {}
+    if is_xla_installed():
+        return flash_attn_padding_info
     if attention_mask_in_length is None:
         key_padding_mask = attention_mask
         if key_padding_mask is None:
